@@ -1,4 +1,3 @@
-Hier ist eine professionelle und strukturierte **README.md** für dein Projekt im GitHub-Markdown-Format.
 
 ---
 
