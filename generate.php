@@ -8,7 +8,7 @@
 
 ini_set('memory_limit', '512M');
 set_time_limit(60);
-$rootDir = '/home/pp2-server/actions-runner/_work/Project-Paradise-2-Server/Project-Paradise-2-Server';
+$rootDir = '/code';
 $outputFile = __DIR__ . '/doc.json';
 
 if (!$rootDir || !is_dir($rootDir)) {
