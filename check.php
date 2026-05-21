@@ -1,15 +1,16 @@
 <?php
 $docFile = __DIR__ . '/doc.json';
 $docData = json_decode(file_get_contents($docFile), true);
-$root = $docData['stats']['sourceRoot'] ?? (dirname(__DIR__) . DIRECTORY_SEPARATOR . 'code');
+$root = '/code';
 
 $fileToKey = [];
 foreach ($docData['classes'] as $key => $c) {
-    $fileToKey[strtolower(str_replace('/', '\\', $c['file']))] = $key;
+    $fileToKey[strtolower($c['file'])] = $key;
 }
 
 $issues = [];
 
+// Scan all .cs files
 $dir = new RecursiveDirectoryIterator($root);
 $iter = new RecursiveIteratorIterator($dir);
 $totalFiles = 0;
@@ -186,25 +187,29 @@ foreach ($iter as $file) {
             }
         }
 
+        // async void (fire-and-forget, dangerous except event handlers)
         if (preg_match('/\basync\s+void\s+(\w+)\s*\(/', $line, $avM)) {
-            if (!str_contains($avM[1], '_')) {
+            if (!str_contains($avM[1], '_')) { 
                 $issues[] = ['type' => 'async-void', 'file' => $relPath, 'line' => $lineNum, 'text' => trim($line)];
                 $asyncVoid++;
             }
         }
 
+        // Hardcoded credentials in strings (skip interpolated values like {var})
         if (preg_match('/"[^"]*?(?:password|pwd|token|secret|apikey|api_key)\s*[:=]\s*([^"]+?)"/i', $line, $credM)) {
-            if (!preg_match('/\{/', $credM[1])) { // skip interpolated values like {var}
+            if (!preg_match('/\{/', $credM[1])) {
                 $masked = preg_replace('/"(password|pwd|token|secret|apikey|api_key)\s*[:=]\s*\K[^"]+"/i', '***"', trim($line));
                 $issues[] = ['type' => 'hardcoded-cred', 'file' => $relPath, 'line' => $lineNum, 'text' => $masked];
                 $hardcodedCreds++;
             }
         }
 
+        // Large methods: track brace depth to estimate method body size
+        // Methods start with a signature line ending in { (or { on next line)
         if (preg_match('/^\s*(?:public|internal|private|protected|static|async|unsafe|override|virtual|sealed)\s+.*\)\s*$/', $line) || preg_match('/^\s*(?:public|internal|private|protected|static|async|unsafe|override|virtual|sealed)\s+.*\)\s*\{\s*$/', $line)) {
-
-        
+            // Method declaration line
         }
+        // Track brace depth for large method detection
         foreach (str_split($line) as $ch) {
             if ($ch === '{') $braceDepth++;
             elseif ($ch === '}') $braceDepth--;
@@ -302,6 +307,8 @@ foreach ($iter3 as $file) {
 }
 
 usort($issues, fn($a, $b) => strcmp($a['file'] . ':' . $a['line'], $b['file'] . ':' . $b['line']));
+
+function e($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -311,7 +318,7 @@ usort($issues, fn($a, $b) => strcmp($a['file'] . ':' . $a['line'], $b['file'] . 
 <title>Code Check — Code Documentation</title>
 <link rel="stylesheet" href="style.css">
 <style>
-.issue { padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; border: 1px solid #e2e8f0; }
+.issue { padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; border: 1px solid var(--border); }
 .issue.console { border-left: 4px solid #f59e0b; }
 .issue.empty-catch { border-left: 4px solid #ef4444; }
 .issue.todo { border-left: 4px solid #3b82f6; }
@@ -322,18 +329,19 @@ usort($issues, fn($a, $b) => strcmp($a['file'] . ':' . $a['line'], $b['file'] . 
 .issue.public-field { border-left: 4px solid #d97706; }
 .issue.many-params { border-left: 4px solid #65a30d; }
 .issue.large-method { border-left: 4px solid #e11d48; }
-.issue .file-line { font-size: 0.8rem; color: #64748b; }
-.issue .code-snippet { font-family: 'Courier New', monospace; font-size: 0.82rem; background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.25rem; white-space: pre-wrap; }
+.issue .file-line { font-size: 0.8rem; color: var(--secondary); }
+.issue .code-snippet { font-family: 'Courier New', monospace; font-size: 0.82rem; background: var(--code-bg); padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.25rem; white-space: pre-wrap; }
 .summary-cards { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
-.summary-card { flex: 1; min-width: 140px; background: #f8fafc; border-radius: 8px; padding: 1rem; border: 1px solid #e2e8f0; text-align: center; }
+.summary-card { flex: 1; min-width: 140px; background: var(--card-bg); border-radius: 8px; padding: 1rem; border: 1px solid var(--border); text-align: center; }
 .summary-card .num { font-size: 2rem; font-weight: 700; }
-.summary-card .label { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
+.summary-card .label { font-size: 0.75rem; color: var(--secondary); margin-top: 0.25rem; }
 .filter-bar { margin-bottom: 1rem; }
-.filter-bar button { padding: 0.35rem 0.75rem; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.8rem; margin-right: 0.4rem; }
+.filter-bar button { padding: 0.35rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); cursor: pointer; font-size: 0.8rem; margin-right: 0.4rem; }
 .filter-bar button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
 </style>
 </head>
 <body>
+<script>if(localStorage.getItem('darkMode')==='true')document.body.classList.add('dark-mode');</script>
 <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
 <div class="sidebar">
   <div class="sidebar-header">
@@ -346,44 +354,16 @@ usort($issues, fn($a, $b) => strcmp($a['file'] . ':' . $a['line'], $b['file'] . 
   </div>
   <div class="sidebar-section">Navigation</div>
   <nav style="padding:0 0 0.5rem 1.5rem;">
+    <a href="index.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">← Overview</a>
     <a href="api.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">⚡ API</a>
+    <a href="projects.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📁 Projects</a>
     <a href="stats.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📊 Statistics</a>
     <a href="check.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;font-weight:700;color:#38bdf8;">🔍 Check</a>
       <div style="padding:0.25rem 1.5rem;border-top:1px solid #1e293b;margin-top:0.5rem;padding-top:0.75rem;">
         <button onclick="toggleDark()" id="dark-toggle" style="width:100%;padding:0.4rem 0.75rem;border:1px solid #334155;border-radius:6px;background:#1e293b;color:#e2e8f0;cursor:pointer;font-size:0.8rem;">🌙 Dark Mode</button>
       </div>
   </nav>
-  <div class="sidebar-section">Projects</div>
-  <nav>
-    <?php
-    $data = json_decode(file_get_contents($docFile), true);
-    $projects = [];
-    foreach ($data['classes'] as $key => $c) {
-        $parts = explode('\\', $c['file']);
-        $proj = $parts[0];
-        if (!isset($projects[$proj])) $projects[$proj] = ['namespaces' => []];
-        $nss = $c['namespace'];
-        if (!in_array($nss, $projects[$proj]['namespaces'])) $projects[$proj]['namespaces'][] = $nss;
-    }
-    ksort($projects);
-    foreach ($projects as &$p) { sort($p['namespaces']); }
-    unset($p);
-    ?>
-    <?php foreach ($projects as $proj => $info): ?>
-    <div class="project-group">
-      <div class="project-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-        <span class="arrow">▶</span>
-        <?= htmlspecialchars($proj) ?>
-        <span class="proj-count"><?= count($info['namespaces']) ?></span>
-      </div>
-      <div class="project-namespaces">
-        <?php foreach ($info['namespaces'] as $nsName): ?>
-        <a href="index.php#ns-<?= urlencode($nsName) ?>"><?= htmlspecialchars($nsName) ?></a>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <?php endforeach; ?>
-  </nav>
+  <?php $data = $docData; include 'sidebar.php'; ?>
 </div>
 
 <div class="main">
@@ -471,7 +451,7 @@ usort($issues, fn($a, $b) => strcmp($a['file'] . ':' . $a['line'], $b['file'] . 
   <?php foreach ($issues as $iss): ?>
   <div class="issue <?= $iss['type'] ?>" data-type="<?= $iss['type'] ?>">
     <div class="file-line">
-      <a href="class.php?c=<?= urlencode($fileToKey[strtolower($iss['file'])] ?? str_replace('.cs', '', str_replace('\\', '.', $iss['file']))) ?>"><?= htmlspecialchars($iss['file']) ?></a>:<?= $iss['line'] ?>
+      <a href="class.php?c=<?= urlencode($fileToKey[strtolower(str_replace('\\', '/', $iss['file']))] ?? str_replace('.cs', '', str_replace('\\', '/', $iss['file']))) ?>"><?= htmlspecialchars($iss['file']) ?></a>:<?= $iss['line'] ?>
       <span style="float:right;font-size:0.7rem;color:#94a3b8;"><?php
 $labels = [
     'console' => 'Console.Write',

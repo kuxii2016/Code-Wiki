@@ -8,6 +8,7 @@ $data = json_decode(file_get_contents($docFile), true);
 
 function e($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 
+// Build project grouping
 $projects = [];
 foreach ($data['classes'] as $key => $c) {
     $parts = explode('\\', $c['file']);
@@ -37,27 +38,10 @@ ksort($grouped);
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Code Documentation — Code Wiki</title>
 <link rel="stylesheet" href="style.css">
-<style>
-.live-search { position: relative; }
-.live-search-results {
-  position: absolute; top: 100%; left: 0; right: 0;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px;
-  max-height: 320px; overflow-y: auto; display: none; z-index: 300;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-}
-.live-search-results.open { display: block; }
-.live-search-item {
-  display: block; padding: 0.5rem 0.75rem; border-bottom: 1px solid #f1f5f9;
-  text-decoration: none; color: #1f2937; font-size: 0.85rem;
-}
-.live-search-item:hover { background: #f1f5f9; }
-.live-search-item .kind-badge { font-size: 0.65rem; }
-.live-search-item .name { font-weight: 600; }
-.live-search-item .parent-name { color: #94a3b8; font-size: 0.78rem; }
-.live-search-loading { padding: 0.75rem; text-align: center; color: #94a3b8; font-size: 0.85rem; }
-</style>
+
 </head>
 <body>
+<script>if(localStorage.getItem('darkMode')==='true')document.body.classList.add('dark-mode');</script>
 <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
 <div class="sidebar">
   <div class="sidebar-header">
@@ -71,29 +55,14 @@ ksort($grouped);
   <div class="sidebar-section">Navigation</div>
   <nav style="padding:0 0 0.5rem 1.5rem;">
     <a href="api.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;font-weight:600;color:#38bdf8;">⚡ API</a>
+    <a href="projects.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📁 Projects</a>
     <a href="stats.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📊 Statistics</a>
     <a href="check.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">🔍 Check</a>
       <div style="padding:0.25rem 1.5rem;border-top:1px solid #1e293b;margin-top:0.5rem;padding-top:0.75rem;">
         <button onclick="toggleDark()" id="dark-toggle" style="width:100%;padding:0.4rem 0.75rem;border:1px solid #334155;border-radius:6px;background:#1e293b;color:#e2e8f0;cursor:pointer;font-size:0.8rem;">🌙 Dark Mode</button>
       </div>
   </nav>
-  <div class="sidebar-section">Projects</div>
-  <nav>
-    <?php foreach ($projects as $proj => $info): ?>
-    <div class="project-group">
-      <div class="project-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-        <span class="arrow">▶</span>
-        <?= e($proj) ?>
-        <span class="proj-count"><?= count($info['namespaces']) ?></span>
-      </div>
-      <div class="project-namespaces">
-        <?php foreach ($info['namespaces'] as $ns): ?>
-        <a href="#ns-<?= urlencode($ns) ?>"><?= e($ns) ?></a>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <?php endforeach; ?>
-  </nav>
+  <?php include 'sidebar.php'; ?>
 </div>
 
 <div class="main">
@@ -101,12 +70,12 @@ ksort($grouped);
   <p class="subtitle">All classes, interfaces, enums, and structs across <?= count($data['namespaces']) ?> namespaces from <?= $data['totalFiles'] ?> source files.</p>
 
   <form action="search.php" method="get" style="margin-bottom: 2rem;">
-    <input type="text" name="q" placeholder="Search classes, methods, properties..." style="width:100%;padding:0.75rem 1rem;border:1px solid #e2e8f0;border-radius:8px;font-size:1rem;outline:0;background:#fff;" onfocus="this.style.borderColor='#38bdf8'" onblur="this.style.borderColor='#e2e8f0'">
+    <input type="text" name="q" class="main-search-input" placeholder="Search classes, methods, properties...">
   </form>
 
   <div id="filter-bar" style="display:none;margin-bottom:1rem;">
-    <button onclick="showAllNamespaces()" style="padding:0.4rem 1rem;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;font-size:0.85rem;">← Show all namespaces</button>
-    <span id="filter-label" style="margin-left:0.75rem;font-size:0.85rem;color:#64748b;"></span>
+    <button onclick="showAllNamespaces()" style="padding:0.4rem 1rem;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);color:var(--text);cursor:pointer;font-size:0.85rem;">← Show all namespaces</button>
+    <span id="filter-label" style="margin-left:0.75rem;font-size:0.85rem;color:var(--secondary);"></span>
   </div>
   <div id="ns-groups">
   <?php foreach ($grouped as $groupName => $namespaces): ?>

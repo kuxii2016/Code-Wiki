@@ -6,7 +6,9 @@
  * Usage: php generate.php
  */
 
-$rootDir = realpath(__DIR__ . '/code');
+ini_set('memory_limit', '512M');
+set_time_limit(60);
+$rootDir = '/home/pp2-server/actions-runner/_work/Project-Paradise-2-Server/Project-Paradise-2-Server';
 $outputFile = __DIR__ . '/doc.json';
 
 if (!$rootDir || !is_dir($rootDir)) {
@@ -41,6 +43,7 @@ echo "Found " . count($csFiles) . " .cs files and " . count($xamlFiles) . " .xam
 
 foreach ($csFiles as $filePath) {
     $relativePath = str_replace($rootDir . DIRECTORY_SEPARATOR, '', $filePath);
+    $relativePath = str_replace('\\', '/', $relativePath);
     $content = file_get_contents($filePath);
     if ($content === false) continue;
     if (str_starts_with($content, "\xEF\xBB\xBF")) $content = substr($content, 3);
@@ -74,6 +77,7 @@ foreach ($csFiles as $filePath) {
 $xamlResources = [];
 foreach ($xamlFiles as $filePath) {
     $relativePath = str_replace($rootDir . DIRECTORY_SEPARATOR, '', $filePath);
+    $relativePath = str_replace('\\', '/', $relativePath);
     $content = file_get_contents($filePath);
     if ($content === false) continue;
     $lines = file($filePath);
@@ -125,7 +129,7 @@ $projectBytes = [];
 foreach ($docData['classes'] as $c) {
     $typeCounts[$c['kind']]++;
     foreach ($c['members'] as $m) $memberCounts[$m['kind']]++;
-    $proj = explode('\\', $c['file'])[0];
+    $proj = explode('/', $c['file'])[0];
     $projectNames[$proj] = true;
 }
 foreach ($csFiles as $filePath) {
@@ -168,6 +172,58 @@ $docData['stats'] = [
     'projectCount'   => count($projectNames),
     'namespaceCount' => count($docData['namespaces']),
 ];
+$projectInfo = [];
+$iterCsproj = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($rootDir));
+foreach ($iterCsproj as $file) {
+    if ($file->getExtension() !== 'csproj') continue;
+    $content = file_get_contents($file->getPathname());
+    $relDir = str_replace($rootDir . DIRECTORY_SEPARATOR, '', $file->getPath());
+    $projKey = explode(DIRECTORY_SEPARATOR, $relDir)[0];
+
+    $tf = '';
+    if (preg_match('/<TargetFramework>([^<]+)<\/TargetFramework>/', $content, $m)) {
+        $tf = $m[1];
+    } elseif (preg_match('/<TargetFrameworkVersion>([^<]+)<\/TargetFrameworkVersion>/', $content, $m)) {
+        $tf = 'net' . ltrim($m[1], 'v');
+    }
+
+    $ot = '';
+    if (preg_match('/<OutputType>([^<]+)<\/OutputType>/', $content, $m)) {
+        $otLabel = $m[1];
+        $ot = $otLabel === 'Exe' ? 'Console' : ($otLabel === 'WinExe' ? 'WinApp' : ($otLabel === 'Library' ? 'Library' : $otLabel));
+    }
+
+    $isWeb = strpos($content, 'Microsoft.NET.Sdk.Web') !== false;
+    $isWpf = strpos($content, 'UseWPF') !== false || strpos($content, 'WindowsDesktop') !== false;
+    $isWinForms = strpos($content, 'UseWindowsForms') !== false;
+
+    // NuGet packages
+    $packages = [];
+    preg_match_all('/<PackageReference\s+Include="([^"]+)"\s+Version="([^"]+)"\s*\/>/', $content, $pkgMatches, PREG_SET_ORDER);
+    foreach ($pkgMatches as $pm) {
+        $packages[] = ['name' => $pm[1], 'version' => $pm[2]];
+    }
+
+    // Project references
+    $projectRefs = [];
+    preg_match_all('/<ProjectReference\s+Include="([^"]+)"\s*\/>/', $content, $refMatches, PREG_SET_ORDER);
+    foreach ($refMatches as $rm) {
+        $projectRefs[] = $rm[1];
+    }
+
+    $projectInfo[$projKey] = [
+        'framework' => $tf ?: '—',
+        'outputType' => $ot,
+        'isWeb' => $isWeb,
+        'isWpf' => $isWpf,
+        'isWinForms' => $isWinForms,
+        'packages' => $packages,
+        'projectRefs' => $projectRefs,
+        'csproj' => $file->getFilename(),
+    ];
+}
+ksort($projectInfo);
+$docData['projectInfo'] = $projectInfo;
 
 file_put_contents($outputFile, json_encode($docData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 echo "Done! " . count($docData['classes']) . " types, " . array_sum(array_map(fn($c) => count($c['members']), $docData['classes'])) . " members, $totalLines LOC documented.\n";
@@ -210,7 +266,6 @@ function extractDocComments(array $lines): array {
 }
 
 function findOriginalBodyStart(string $code, string $className): ?int {
-    // Find 'class Name' or 'struct Name' etc in original code
     $pattern = '/(?:(?:class|struct|interface|enum)\s+)' . preg_quote($className, '/') . '/';
     if (!preg_match($pattern, $code, $m, PREG_OFFSET_CAPTURE)) return null;
     $afterName = $m[0][1] + strlen($m[0][0]);
@@ -268,6 +323,7 @@ function parseTypes(string $code, array $docComments, string $namespace, string 
                     $members = parseClassMembers($strippedClassBody, $originalClassBody ?? '', $name);
                 }
             }
+            // Extract doc comments for all members & strip /// from code
             if (!empty($originalClassBody) && !empty($members)) {
                 $origBodyLines = explode("\n", $originalClassBody);
                 foreach ($members as &$member) {
@@ -325,11 +381,22 @@ function extractClassBody(string $code, int $startPos): ?string {
 function parseEnumMembers(string $body): array {
     $members = [];
     if (preg_match_all('/^\s*(\w+)\s*(?:=\s*([^,}]+))?/m', $body, $m, PREG_SET_ORDER)) {
+        $bodyLines = explode("\n", $body);
         $currentValue = null;
         foreach ($m as $match) {
             $name = trim($match[1]);
             if (!empty($name)) {
                 $code = trim($match[0]);
+                $obsolete = '';
+                $matchPos = strpos($body, $match[0]);
+                if ($matchPos !== false) {
+                    $lineBefore = substr($body, 0, $matchPos);
+                    $lastNewline = strrpos($lineBefore, "\n");
+                    $prevLine = $lastNewline !== false ? substr($lineBefore, $lastNewline + 1) : $lineBefore;
+                    if (preg_match('/\[Obsolete\s*(?:\(([^)]*)\))?\]/', $prevLine, $obM)) {
+                        $obsolete = trim($obM[1] ?? '') ?: '1';
+                    }
+                }
                 if (isset($match[2]) && $match[2] !== '') {
                     $expr = trim($match[2]);
                     if (preg_match('/^[+-]?(0x[0-9a-fA-F]+|\d+)$/', $expr)) {
@@ -341,7 +408,7 @@ function parseEnumMembers(string $body): array {
                     $currentValue = $currentValue !== null ? $currentValue + 1 : 0;
                     $code .= ' = ' . $currentValue;
                 }
-                $members[] = ['kind' => 'field', 'name' => $name, 'type' => '', 'doc' => '', 'line' => 0, 'code' => $code];
+                $members[] = ['kind' => 'field', 'name' => $name, 'type' => '', 'doc' => '', 'line' => 0, 'code' => $code, 'obsolete' => $obsolete];
             }
         }
     }
@@ -354,6 +421,7 @@ function parseClassMembers(string $strippedBody, string $originalBody, string $c
     $modPat = '(?:public|internal|private|protected|static|virtual|override|abstract|async|unsafe|new|sealed|extern|partial|readonly|volatile)\s+';
     $blockedRanges = [];
 
+    // ── Nested types ──
     $nestPat = '/(?:^|\n)\s*(?:(?:public|internal|private|protected|new|unsafe)\s+)*(?:static|abstract|sealed|partial|readonly|unsafe)?\s*(?:class|struct|interface|enum)\s+\w+/m';
     if (preg_match_all($nestPat, $strippedBody, $nm, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
         foreach ($nm as $n) {
@@ -395,26 +463,33 @@ function parseClassMembers(string $strippedBody, string $originalBody, string $c
         $blockEnd = findBlockEnd($strippedBody, $bracePos);
         if ($blockEnd !== null) $blockedRanges[] = [(int)$m[1][1], $blockEnd];
     }
-
     $fieldPattern = '/(?:^|\n)\s*(?!(?:return|throw|if|for|while|switch|case|break|continue|using|namespace|#|else|do|try|catch|finally|fixed|stackalloc|lock|foreach|yield|base|this|sizeof|typeof|nameof|default))\s*((?:(?:public|internal|private|protected|static|readonly|volatile|new|unsafe)\s+)*(?:[\w\[\]<>,\[\]?]+)\s+(\w+(?:\s*,\s*\w+)*)\s*(?:=\s*[^;]+)?\s*;)/m';
     if (preg_match_all($fieldPattern, $strippedBody, $fm, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
         foreach ($fm as $f) {
             $fNames = preg_split('/\s*,\s*/', $f[2][0]);
             $fOffset = (int)$f[0][1];
+            // Skip if inside a method/property body
             $inBlock = false; foreach ($blockedRanges as $br) { if ($fOffset >= $br[0] && $fOffset <= $br[1]) { $inBlock = true; break; } }
             if ($inBlock) continue;
+            // Skip if not at class-level brace depth
             $bd = 0; for ($bi = 0; $bi < $fOffset && $bi < strlen($strippedBody); $bi++) { if ($strippedBody[$bi] === '{') $bd++; elseif ($strippedBody[$bi] === '}') $bd--; }
             if ($bd !== 0) continue;
             $decl = trim($f[1][0]);
             $declBeforeEq = strstr($decl, '=', true);
             if ($declBeforeEq === false) $declBeforeEq = $decl;
             if (preg_match('/[\({\]=>]/', $declBeforeEq)) continue;
+            // Extract type from declaration (remove modifiers and all names)
             $typeStr = preg_replace('/\b(public|internal|private|protected|static|readonly|volatile|new|unsafe|sealed|virtual|override|abstract|async|partial|event)\s*/', '', $decl);
             $typeStr = preg_replace('/\s*=\s*[^;]+/', '', $typeStr);
             $typeStr = preg_replace('/\s+\w+(?:\s*,\s*\w+)*\s*;?\s*$/', '', $typeStr);
             $typeStr = trim($typeStr);
             if (empty($typeStr) || strlen($typeStr) > 50) continue;
             if (in_array($typeStr, ['var', 'return', 'throw', 'if', 'for', 'while', 'switch', 'case', 'break', 'continue', 'using', 'foreach', 'lock', 'fixed', 'stackalloc', 'catch', 'yield'])) continue;
+            $obsolete = '';
+            if (preg_match('/\[Obsolete\s*(?:\(([^)]*)\))?\]\s*\n\s*' . preg_quote(preg_replace('/\s+/', ' ', trim($f[0][0])), '/') . '/s', $originalBody, $obM)) {
+                $obsolete = trim($obM[1] ?? '') ?: '1';
+            }
+
             $access = extractAccess($decl);
             $mods = preg_replace('/\s+/', ' ', trim(preg_replace('/\b' . preg_quote($typeStr, '/') . '\b.*/s', '', $decl)));
             foreach ($fNames as $fi => $fName) {
@@ -425,7 +500,7 @@ function parseClassMembers(string $strippedBody, string $originalBody, string $c
                     $val = ' = ' . trim($vMatch[1]);
                 }
                 $code = $mods . ' ' . $typeStr . ' ' . $fName . $val . ';';
-                $members[] = ['kind' => 'field', 'name' => $fName, 'type' => $typeStr, 'doc' => '', 'line' => 0, 'code' => $code, 'access' => $access];
+                $members[] = ['kind' => 'field', 'name' => $fName, 'type' => $typeStr, 'doc' => '', 'line' => 0, 'code' => $code, 'access' => $access, 'obsolete' => $obsolete];
             }
         }
     }
@@ -488,6 +563,7 @@ function parseClassMembers(string $strippedBody, string $originalBody, string $c
         foreach ($tokens as $t) {
             $clean = trim($t);
             if (!$foundNonModifier && in_array($clean, $modifierSet)) {
+                // skip modifier
             } else {
                 $foundNonModifier = true;
                 if ($clean !== '') $returnTokens[] = $clean;
@@ -661,6 +737,7 @@ function extractCodeForMember(string $originalBody, string $strippedBody, $strip
             }
         }
         if ($kind === 'constructor' && $afterParen < $len && $originalBody[$afterParen] === ':') {
+            // skip initializer
             $semiOrBrace = strpos($originalBody, '{', $afterParen);
             if ($semiOrBrace !== false) {
                 $block = extractClassBody($originalBody, $semiOrBrace + 1);

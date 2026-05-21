@@ -8,6 +8,16 @@ $data = json_decode(file_get_contents($docFile), true);
 
 function e($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 
+function parseHttpMethod($code) {
+    $methods = ['HttpGet', 'HttpPost', 'HttpPut', 'HttpDelete', 'HttpPatch'];
+    foreach ($methods as $m) {
+        if (preg_match('/^\s*\[' . $m . '\s*(?:\(\s*"([^"]*)"\s*\))?/m', $code, $matches)) {
+            return ['verb' => str_replace('Http', '', $m), 'route' => $matches[1] ?? ''];
+        }
+    }
+    return null;
+}
+
 $projects = [];
 foreach ($data['classes'] as $key => $c) {
     $parts = explode('\\', $c['file']);
@@ -22,16 +32,17 @@ foreach ($projects as &$p) { sort($p['namespaces']); }
 unset($p);
 
 $apiGroups = [];
+$apiMethodsCount = 0;
 foreach ($data['classes'] as $k => $c) {
-    $fileLower = str_replace('\\', '/', strtolower($c['file']));
-    if (strpos($fileLower, 'api') === false) continue;
-    if (strpos($fileLower, 'serverpages') !== false || strpos($fileLower, 'assemblyinfo') !== false) continue;
+    $bases = array_map('strtolower', $c['baseTypes'] ?? []);
+    if (!in_array('controllerbase', $bases) && !in_array('controller', $bases)) continue;
     $nsParts = explode('.', $c['namespace']);
     $service = count($nsParts) >= 2 ? $nsParts[0] . '.' . $nsParts[1] : $nsParts[0];
     if (count($nsParts) >= 3 && $nsParts[1] === 'API') $service = $nsParts[0];
     if (!isset($apiGroups[$service])) $apiGroups[$service] = ['classes' => [], 'methods' => 0];
     $apiGroups[$service]['classes'][] = $c;
     $apiGroups[$service]['methods'] += count(array_filter($c['members'], fn($m) => $m['kind'] === 'method'));
+    $apiMethodsCount += count(array_filter($c['members'], fn($m) => $m['kind'] === 'method'));
 }
 ksort($apiGroups);
 ?>
@@ -42,27 +53,10 @@ ksort($apiGroups);
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>API Endpoints — Code Documentation</title>
 <link rel="stylesheet" href="style.css">
-<style>
-.live-search { position: relative; }
-.live-search-results {
-  position: absolute; top: 100%; left: 0; right: 0;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px;
-  max-height: 320px; overflow-y: auto; display: none; z-index: 300;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-}
-.live-search-results.open { display: block; }
-.live-search-item {
-  display: block; padding: 0.5rem 0.75rem; border-bottom: 1px solid #f1f5f9;
-  text-decoration: none; color: #1f2937; font-size: 0.85rem;
-}
-.live-search-item:hover { background: #f1f5f9; }
-.live-search-item .kind-badge { font-size: 0.65rem; }
-.live-search-item .name { font-weight: 600; }
-.live-search-item .parent-name { color: #94a3b8; font-size: 0.78rem; }
-.live-search-loading { padding: 0.75rem; text-align: center; color: #94a3b8; font-size: 0.85rem; }
-</style>
+
 </head>
 <body>
+<script>if(localStorage.getItem('darkMode')==='true')document.body.classList.add('dark-mode');</script>
 <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
 <div class="sidebar">
   <div class="sidebar-header">
@@ -76,29 +70,14 @@ ksort($apiGroups);
   <div class="sidebar-section">Navigation</div>
   <nav style="padding:0 0 0.5rem 1.5rem;">
     <a href="api.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;font-weight:700;color:#38bdf8;">⚡ API</a>
+    <a href="projects.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📁 Projects</a>
     <a href="stats.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📊 Statistics</a>
     <a href="check.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">🔍 Check</a>
       <div style="padding:0.25rem 1.5rem;border-top:1px solid #1e293b;margin-top:0.5rem;padding-top:0.75rem;">
         <button onclick="toggleDark()" id="dark-toggle" style="width:100%;padding:0.4rem 0.75rem;border:1px solid #334155;border-radius:6px;background:#1e293b;color:#e2e8f0;cursor:pointer;font-size:0.8rem;">🌙 Dark Mode</button>
       </div>
   </nav>
-  <div class="sidebar-section">Projects</div>
-  <nav>
-    <?php foreach ($projects as $proj => $info): ?>
-    <div class="project-group">
-      <div class="project-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-        <span class="arrow">▶</span>
-        <?= e($proj) ?>
-        <span class="proj-count"><?= count($info['namespaces']) ?></span>
-      </div>
-      <div class="project-namespaces">
-        <?php foreach ($info['namespaces'] as $nsName): ?>
-        <a href="index.php#ns-<?= urlencode($nsName) ?>"><?= e($nsName) ?></a>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <?php endforeach; ?>
-  </nav>
+  <?php include 'sidebar.php'; ?>
 </div>
 
 <div class="main">
@@ -125,15 +104,23 @@ ksort($apiGroups);
         </td>
         <td style="font-size:0.8rem;color:#64748b;"><?= e($c['namespace']) ?></td>
         <td style="font-size:0.8rem;">
-          <?php foreach (array_slice($endpoints, 0, 5) as $m): ?>
-          <div style="margin-bottom:0.25rem;">
-            <span class="kind-badge method" style="font-size:0.6rem;"><?= e($m['name']) ?></span>
-            <?php if (!empty($m['doc'])): ?><span style="color:#64748b;font-size:0.7rem;"><?= e(substr($m['doc'], 0, 80)) ?><?= strlen($m['doc']) > 80 ? '…' : '' ?></span><?php endif; ?>
+          <?php foreach ($endpoints as $m):
+              $httpInfo = parseHttpMethod($m['code'] ?? '');
+          ?>
+          <div style="margin-bottom:0.3rem;">
+            <?php if ($httpInfo):
+                $verbColors = ['GET' => '#22c55e', 'POST' => '#3b82f6', 'PUT' => '#f59e0b', 'DELETE' => '#ef4444', 'PATCH' => '#8b5cf6'];
+                $vc = $verbColors[$httpInfo['verb']] ?? '#64748b';
+            ?>
+            <span style="display:inline-block;padding:0.1rem 0.35rem;border-radius:4px;font-size:0.6rem;font-weight:700;color:#fff;background:<?= $vc ?>;text-transform:uppercase;"><?= e($httpInfo['verb']) ?></span>
+            <?php if ($httpInfo['route']): ?>
+            <code style="font-size:0.7rem;color:var(--secondary);"><?= e($httpInfo['route']) ?></code>
+            <?php endif; ?>
+            <?php endif; ?>
+            <span style="font-size:0.78rem;font-weight:600;"><?= e($m['name']) ?></span>
+            <?php if (!empty($m['doc'])): ?><br><span style="color:var(--secondary);font-size:0.7rem;"><?= e(substr($m['doc'], 0, 100)) ?><?= strlen($m['doc']) > 100 ? '…' : '' ?></span><?php endif; ?>
           </div>
           <?php endforeach; ?>
-          <?php if (count($endpoints) > 5): ?>
-          <span style="color:#94a3b8;">+<?= count($endpoints) - 5 ?> more</span>
-          <?php endif; ?>
         </td>
       </tr>
       <?php endforeach; ?>

@@ -15,10 +15,10 @@ foreach ($data['classes'] as $key => $c) {
     $shortToFqn[$lc][] = $key;
 }
 
-$classKey = $_GET['c'] ?? '';
+$classKey = str_replace('/', '\\', $_GET['c'] ?? '');
 if (!isset($data['classes'][$classKey])) {
     $lc = strtolower($classKey);
-    if (isset($shortToFqn[$lc])) {
+    if (strpos($classKey, '\\') === false && isset($shortToFqn[$lc])) {
         $candidates = $shortToFqn[$lc];
         $classKey = count($candidates) === 1 ? $candidates[0] : $candidates[0];
     }
@@ -33,7 +33,7 @@ if (substr($classKey, -1) === '?') {
 $primitiveInfo = null;
 $projects = [];
 foreach ($data['classes'] as $key => $c) {
-    $parts = explode('\\', $c['file']);
+    $parts = explode('/', str_replace('\\', '/', $c['file']));
     $proj = $parts[0];
     if (!isset($projects[$proj])) $projects[$proj] = ['namespaces' => [], 'types' => 0];
     $projects[$proj]['types']++;
@@ -144,11 +144,8 @@ if (!$primitiveInfo && !isset($data['classes'][$classKey])) {
     }
 }
 
-if (!isset($data['classes'][$classKey]) && !$primitiveInfo) {
-    header('HTTP/1.0 404 Not Found');
-    echo "Class not found.";
-    exit;
-}
+$classNotFound = !isset($data['classes'][$classKey]) && !$primitiveInfo;
+if ($classNotFound) { header('HTTP/1.0 404 Not Found'); }
 if ($primitiveInfo) {
     $class = [
         'name' => $classKey,
@@ -165,18 +162,24 @@ if ($primitiveInfo) {
     ];
     $ns = '';
     $shortName = $classKey;
+} elseif ($classNotFound) {
+    $class = ['name' => $classKey, 'namespace' => '', 'kind' => '', 'doc' => ''];
+    $ns = '';
+    $shortName = $classKey;
 } else {
     $class = $data['classes'][$classKey];
-    $ns = $class['namespace'];
-    $shortName = substr($classKey, strlen($ns) + 1);
+    $parts = explode('\\', $classKey);
+    $ns = $parts[0];
+    $shortName = $parts[1] ?? $parts[0];
 }
-
 $derivedMap = [];
-foreach ($data['classes'] as $key => $c) {
-    foreach ($c['baseTypes'] ?? [] as $bt) {
-        $btClean = preg_replace('/[<>].*$/', '', $bt);
-        if (!isset($derivedMap[$btClean])) $derivedMap[$btClean] = [];
-        $derivedMap[$btClean][] = $key;
+if (!$classNotFound) {
+    foreach ($data['classes'] as $key => $c) {
+        foreach ($c['baseTypes'] ?? [] as $bt) {
+            $btClean = preg_replace('/[<>].*$/', '', $bt);
+            if (!isset($derivedMap[$btClean])) $derivedMap[$btClean] = [];
+            $derivedMap[$btClean][] = $key;
+        }
     }
 }
 
@@ -188,7 +191,6 @@ function resolveFqn($short) {
     if (!isset($shortToFqn[$lc])) return $short;
     $candidates = $shortToFqn[$lc];
     if (count($candidates) === 1) return $candidates[0];
-    // Prefer same namespace (keys are "Namespace\ClassName")
     $nsPrefix = $ns . '\\';
     foreach ($candidates as $c) {
         if (strpos($c, $nsPrefix) === 0) return $c;
@@ -216,36 +218,9 @@ function renderType($type) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($shortName) ?> — Code Documentation</title>
 <link rel="stylesheet" href="style.css">
-<style>
-.live-search { position: relative; }
-.live-search-results {
-  position: absolute; top: 100%; left: 0; right: 0;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px;
-  max-height: 320px; overflow-y: auto; display: none; z-index: 300;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-}
-.live-search-results.open { display: block; }
-.live-search-item {
-  display: block; padding: 0.5rem 0.75rem; border-bottom: 1px solid #f1f5f9;
-  text-decoration: none; color: #1f2937; font-size: 0.85rem;
-}
-.live-search-item:hover { background: #f1f5f9; }
-.live-search-item .kind-badge { font-size: 0.65rem; }
-.live-search-item .name { font-weight: 600; }
-.live-search-item .parent-name { color: #94a3b8; font-size: 0.78rem; }
-.live-search-loading { padding: 0.75rem; text-align: center; color: #94a3b8; font-size: 0.85rem; }
-.access-badge { font-size:0.65rem; padding:1px 5px; border-radius:3px; margin-left:4px; font-weight:600; text-transform:uppercase; }
-.access-badge.public { background:#dbeafe; color:#1e40af; }
-.access-badge.private { background:#fce7f3; color:#9d174d; }
-.access-badge.internal { background:#e0e7ff; color:#3730a3; }
-.access-badge.protected { background:#fef3c7; color:#92400e; }
-.primitive-table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.85rem; }
-.primitive-table th { background:#f1f5f9; text-align:left; padding:0.4rem 0.6rem; border:1px solid #e2e8f0; font-weight:600; }
-.primitive-table td { padding:0.4rem 0.6rem; border:1px solid #e2e8f0; }
-.primitive-table .active-primitive { background:#dbeafe; font-weight:600; }
-</style>
 </head>
 <body>
+<script>if(localStorage.getItem('darkMode')==='true')document.body.classList.add('dark-mode');</script>
 <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
 <div class="sidebar">
   <div class="sidebar-header">
@@ -259,33 +234,26 @@ function renderType($type) {
   <div class="sidebar-section">Navigation</div>
   <nav style="padding:0 0 0.5rem 1.5rem;">
     <a href="api.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;font-weight:600;color:#38bdf8;">⚡ API</a>
+    <a href="projects.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📁 Projects</a>
     <a href="stats.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📊 Statistics</a>
     <a href="check.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">🔍 Check</a>
       <div style="padding:0.25rem 1.5rem;border-top:1px solid #1e293b;margin-top:0.5rem;padding-top:0.75rem;">
         <button onclick="toggleDark()" id="dark-toggle" style="width:100%;padding:0.4rem 0.75rem;border:1px solid #334155;border-radius:6px;background:#1e293b;color:#e2e8f0;cursor:pointer;font-size:0.8rem;">🌙 Dark Mode</button>
       </div>
   </nav>
-  <div class="sidebar-section">Projects</div>
-  <nav>
-    <?php foreach ($projects as $proj => $info): ?>
-    <div class="project-group">
-      <div class="project-header<?= in_array($ns, $info['namespaces']) ? ' open' : '' ?>" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-        <span class="arrow">▶</span>
-        <?= e($proj) ?>
-        <span class="proj-count"><?= count($info['namespaces']) ?></span>
-      </div>
-      <div class="project-namespaces<?= in_array($ns, $info['namespaces']) ? ' open' : '' ?>">
-        <?php foreach ($info['namespaces'] as $nsName): ?>
-        <a href="index.php#ns-<?= urlencode($nsName) ?>" class="<?= $nsName === $ns ? 'active' : '' ?>"><?= e($nsName) ?></a>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <?php endforeach; ?>
-  </nav>
+  <?php $treeActiveNs = $ns; $treeActiveClass = $classKey; include 'sidebar.php'; ?>
 </div>
 
 <div class="main">
+  <?php if ($classNotFound): ?>
+  <div class="empty-state">
+    <h1>Class not found</h1>
+    <p>The class <strong><?= e($classKey) ?></strong> does not exist in the documented codebase.</p>
+    <p><a href="index.php" class="param-type">← Back to overview</a></p>
+  </div>
+  <?php else: ?>
   <h1><span class="kind-badge <?= $class['kind'] ?>"><?= $class['kind'] ?></span> <?= e($shortName) ?></h1>
+  <!-- DEBUG: key=<?= $classKey ?> ns=<?= $ns ?> file=<?= $class['file'] ?? '' ?> storedNs=<?= $data['classes'][$classKey]['namespace'] ?? '' ?> -->
   <p class="subtitle">Namespace: <code><?= e($ns) ?></code></p>
   <?php if ($class['doc']): ?><p><?= e($class['doc']) ?></p><?php endif; ?>
 
@@ -296,10 +264,10 @@ function renderType($type) {
       if ($x['classKey'] === $classFullKey) { $relatedXaml = $x; break; }
   }
   if ($relatedXaml): ?>
-  <div style="margin:1rem 0;padding:0.75rem 1rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:0.85rem;">
-    <strong style="color:#166534;">📄 <?= e($relatedXaml['kind']) ?>:</strong>
-    <code style="background:#dcfce7;"><?= e($relatedXaml['file']) ?></code>
-    <span style="color:#64748b;margin-left:0.5rem;"><?= $relatedXaml['lineCount'] ?> lines</span>
+  <div class="xaml-notice">
+    <strong>📄 <?= e($relatedXaml['kind']) ?>:</strong>
+    <code><?= e($relatedXaml['file']) ?></code>
+    <span style="margin-left:0.5rem;color:var(--secondary);"><?= $relatedXaml['lineCount'] ?> lines</span>
   </div>
   <?php endif; ?>
 
@@ -339,7 +307,7 @@ function renderType($type) {
       <?php if (!empty($m['access'])): ?><span class="access-badge <?= $m['access'] ?>"><?= $m['access'] ?></span><?php endif; ?>
       <?php if (!empty($m['obsolete'])): ?><span class="obsolete-badge">obsolete<?= $m['obsolete'] !== '1' ? ': ' . e($m['obsolete']) : '' ?></span><?php endif; ?>
       <span class="member-name"><?= e($m['name']) ?></span>
-      <span class="member-type">(<?php foreach ($m['params'] as $i => $p): ?><?php if ($i > 0): ?>, <?php endif; ?><?= renderType($p['type']) ?> <span class="param-name"><?= e($p['name']) ?></span><?php endforeach; ?>)</span>
+      <span class="member-type"><?= !empty($m['params']) ? '(' . implode(', ', array_map(fn($p) => renderType($p['type']) . ' <span class="param-name">' . e($p['name']) . '</span>', $m['params'])) . ')' : '' ?></span>
     </div>
     <?php if ($m['doc']): ?><div class="doc-text"><?= e($m['doc']) ?></div><?php endif; ?>
     <?php if (!empty($m['code'])): ?><details class="code-details"><summary>Show code</summary><pre><code><?= e($m['code']) ?></code></pre></details><?php endif; ?>
@@ -389,7 +357,7 @@ function renderType($type) {
       <?php if (!empty($m['access'])): ?><span class="access-badge <?= $m['access'] ?>"><?= $m['access'] ?></span><?php endif; ?>
       <?php if (!empty($m['obsolete'])): ?><span class="obsolete-badge">obsolete<?= $m['obsolete'] !== '1' ? ': ' . e($m['obsolete']) : '' ?></span><?php endif; ?>
       <span class="member-name"><?= e($m['name']) ?></span>
-      <span class="member-type">(<?php foreach ($m['params'] ?? [] as $i => $p): ?><?php if ($i > 0): ?>, <?php endif; ?><?= renderType($p['type']) ?> <span class="param-name"><?= e($p['name']) ?></span><?php endforeach; ?>)</span>
+      <span class="member-type"><?= !empty($m['params']) ? '(' . implode(', ', array_map(fn($p) => renderType($p['type']) . ' <span class="param-name">' . e($p['name']) . '</span>', $m['params'])) . ')' : e($m['type'] ?? '') ?></span>
     </div>
     <?php if ($m['doc']): ?><div class="doc-text"><?= e($m['doc']) ?></div><?php endif; ?>
     <?php if (!empty($m['code'])): ?><details class="code-details"><summary>Show code</summary><pre><code><?= e($m['code']) ?></code></pre></details><?php endif; ?>
@@ -439,7 +407,7 @@ function renderType($type) {
       <?php if (!empty($m['access'])): ?><span class="access-badge <?= $m['access'] ?>"><?= $m['access'] ?></span><?php endif; ?>
       <?php if (!empty($m['obsolete'])): ?><span class="obsolete-badge">obsolete<?= $m['obsolete'] !== '1' ? ': ' . e($m['obsolete']) : '' ?></span><?php endif; ?>
       <span class="member-name"><?= e($m['name']) ?></span>
-      <?php if ($m['type']): ?><span class="member-type">: <?= e($m['type']) ?></span><?php endif; ?>
+      <span class="member-type"><?= !empty($m['params']) ? '(' . implode(', ', array_map(fn($p) => renderType($p['type']) . ' <span class="param-name">' . e($p['name']) . '</span>', $m['params'])) . ')' : e($m['type'] ?? '') ?></span>
     </div>
     <?php if ($m['doc']): ?><div class="doc-text"><?= e($m['doc']) ?></div><?php endif; ?>
     <?php if (!empty($m['code'])): ?><details class="code-details"><summary>Show code</summary><pre><code><?= e($m['code']) ?></code></pre></details><?php endif; ?>
@@ -456,7 +424,7 @@ function renderType($type) {
       <?php if (!empty($m['access'])): ?><span class="access-badge <?= $m['access'] ?>"><?= $m['access'] ?></span><?php endif; ?>
       <?php if (!empty($m['obsolete'])): ?><span class="obsolete-badge">obsolete<?= $m['obsolete'] !== '1' ? ': ' . e($m['obsolete']) : '' ?></span><?php endif; ?>
       <span class="member-name"><?= e($m['name']) ?></span>
-      <span class="member-type">(<?php foreach ($m['params'] as $i => $p): ?><?php if ($i > 0): ?>, <?php endif; ?><?= renderType($p['type']) ?> <span class="param-name"><?= e($p['name']) ?></span><?php endforeach; ?>)</span>
+      <span class="member-type"><?= !empty($m['params']) ? '(' . implode(', ', array_map(fn($p) => renderType($p['type']) . ' <span class="param-name">' . e($p['name']) . '</span>', $m['params'])) . ')' : '' ?></span>
       <span class="member-type">: <?= renderType($m['returnType']) ?></span>
     </div>
     <?php if ($m['doc']): ?><div class="doc-text"><?= e($m['doc']) ?></div><?php endif; ?>
@@ -485,6 +453,7 @@ function renderType($type) {
   </table>
   <?php endif; ?>
   
+  <?php endif; ?>
   <div class="footer">
     <p><a href="index.php">Back to overview</a> &mdash; Generated from <?= $data['totalFiles'] ?> source files</p>
   </div>
@@ -502,7 +471,6 @@ function toggleDark() {
 </script>
 <script>
 (function() {
-  // Live search
   const searchInput = document.getElementById('search-input');
   const resultsDiv = document.getElementById('search-results');
   let timer = null;
@@ -541,6 +509,7 @@ function toggleDark() {
   }
   function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+  // Scroll active namespace link into view
   const activeLink = document.querySelector('.project-namespaces a.active');
   if (activeLink) {
     setTimeout(function() { activeLink.scrollIntoView({ block: 'nearest' }); }, 100);

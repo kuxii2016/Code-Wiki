@@ -25,6 +25,11 @@
   --stat-hover-border: #93c5fd;
   --doc-text: #475569;
   --snippet-bg: #0f172a;
+  --accent-bg: #dbeafe;
+  --xaml-bg: #f0fdf4;
+  --xaml-border: #bbf7d0;
+  --xaml-text: #166534;
+  --xaml-code-bg: #dcfce7;
 }
 body.dark-mode {
   --bg: #0f172a;
@@ -48,6 +53,14 @@ body.dark-mode {
   --stat-hover-border: #2563eb;
   --doc-text: #94a3b8;
   --snippet-bg: #0f172a;
+  --accent-bg: #1e3a5f;
+  --xaml-bg: #0f2a1e;
+  --xaml-border: #166534;
+  --xaml-text: #4ade80;
+  --xaml-code-bg: #164a2e;
+}
+body.dark-mode .sidebar {
+  background: #080e1a;
 }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -132,10 +145,94 @@ body {
   color: #64748b;
   font-weight: 600;
 }
+.main-search-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  background: var(--card-bg);
+  color: var(--text);
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.main-search-input:focus {
+  border-color: #38bdf8;
+}
+.primitive-table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.85rem; }
+.primitive-table th {
+  background: var(--code-bg); text-align:left; padding:0.4rem 0.6rem;
+  border:1px solid var(--border); font-weight:600; color: var(--text);
+}
+.primitive-table td { padding:0.4rem 0.6rem; border:1px solid var(--border); color: var(--text); }
+.primitive-table .active-primitive { background:var(--accent-bg); font-weight:600; }
+
+/* Live search (shared) */
+.live-search { position: relative; }
+.live-search-results {
+  position: absolute; top: 100%; left: 0; right: 0;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 0 0 8px 8px;
+  max-height: 320px; overflow-y: auto; display: none; z-index: 300;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+.live-search-results.open { display: block; }
+.live-search-item {
+  display: block; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border);
+  text-decoration: none; color: var(--text); font-size: 0.85rem;
+}
+.live-search-item:hover { background: var(--code-bg); }
+.live-search-item .kind-badge { font-size: 0.65rem; }
+.live-search-item .name { font-weight: 600; }
+.live-search-item .parent-name { color: var(--secondary); font-size: 0.78rem; }
+.live-search-loading { padding: 0.75rem; text-align: center; color: var(--secondary); font-size: 0.85rem; }
+
+/* Access badges */
+.access-badge { font-size:0.65rem; padding:1px 5px; border-radius:3px; margin-left:4px; font-weight:600; text-transform:uppercase; }
+.access-badge.public { background:#dbeafe; color:#1e40af; }
+.access-badge.private { background:#fce7f3; color:#9d174d; }
+.access-badge.internal { background:#e0e7ff; color:#3730a3; }
+.access-badge.protected { background:#fef3c7; color:#92400e; }
+body.dark-mode .access-badge.public { background:#1e3a5f; color:#93c5fd; }
+body.dark-mode .access-badge.private { background:#4a1942; color:#f9a8d4; }
+body.dark-mode .access-badge.internal { background:#2e1065; color:#a5b4fc; }
+body.dark-mode .access-badge.protected { background:#4a3a0e; color:#fcd34d; }
+
+/* XAML notice */
+.xaml-notice {
+  margin:1rem 0; padding:0.75rem 1rem;
+  background: var(--xaml-bg); border: 1px solid var(--xaml-border);
+  border-radius:8px; font-size:0.85rem;
+}
+.xaml-notice strong { color: var(--xaml-text); }
+.xaml-notice code { background: var(--xaml-code-bg); }
+
+/* Code details */
+details.code-details { margin-top: 0.25rem; }
+details.code-details summary {
+  cursor: pointer; font-size: 0.78rem; color: var(--link);
+  user-select: none; padding: 0.15rem 0;
+}
+details.code-details summary:hover { opacity: 0.8; }
+details.code-details pre {
+  margin-top: 0.3rem; padding: 0.75rem; border-radius: 6px;
+  background: var(--code-bg); border: 1px solid var(--border); overflow-x: auto;
+}
+details.code-details code {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  font-size: 0.82rem; color: var(--text); line-height: 1.6;
+}
+
+/* Sidebar active tree class */
+.sidebar nav a.tree-class.active {
+  background: var(--accent-bg); color: #e2e8f0; border-left-color: #38bdf8;
+}
+.sidebar nav a.tree-class.active .kind-dot { opacity: 1; }
+
 .project-group { border-bottom: 1px solid #1e293b; }
 .project-header {
   display: flex; align-items: center; gap: 0.4rem;
-  padding: 0.6rem 1.5rem; cursor: pointer; user-select: none;
+  padding: 0.6rem 1.5rem 0.6rem 1.5rem; cursor: pointer; user-select: none;
   color: #e2e8f0; font-size: 0.82rem; font-weight: 600;
   transition: background 0.15s;
 }
@@ -158,6 +255,45 @@ body {
   color: #e2e8f0; background: #1e293b;
   border-left-color: #38bdf8; font-weight: 600;
 }
+/* Tree sidebar */
+.project-children { display: none; }
+.project-header.open + .project-children { display: block; }
+.tree-ns { border-bottom: none; position: relative; }
+.ns-header {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1.5rem 0.5rem 2.5rem;
+  color: #94a3b8; font-size: 0.72rem; font-weight: 500;
+  cursor: pointer; user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.ns-header:hover { background: #1e293b; color: #e2e8f0; }
+.ns-header .arrow {
+  font-size: 0.55rem; color: #475569; transition: transform 0.2s; flex-shrink: 0;
+}
+.ns-header.open .arrow { transform: rotate(90deg); }
+.ns-header .tree-count {
+  margin-left: auto; font-size: 0.6rem; color: #475569; font-weight: 400;
+}
+.ns-children { display: none; }
+.ns-header.open + .ns-children { display: block; }
+.sidebar nav a.tree-class {
+  display: flex; align-items: center; gap: 0.3rem;
+  padding: 0.2rem 1.5rem 0.2rem 4rem;
+  color: #94a3b8; text-decoration: none; font-size: 0.7rem;
+  border-left: none; word-break: normal;
+  transition: background 0.15s, color 0.15s;
+}
+.sidebar nav a.tree-class:hover { color: #e2e8f0; background: #1e293b; }
+.kind-dot {
+  width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; display: inline-block;
+}
+.kind-dot.class { background: #3b82f6; }
+.kind-dot.interface { background: #10b981; }
+.kind-dot.enum { background: #8b5cf6; }
+.kind-dot.struct { background: #f59e0b; }
+.kind-dot.builtin { background: #94a3b8; }
+.kind-dot.primitive { background: #94a3b8; }
+.kind-dot.array { background: #06b6d4; }
 /* Main content */
 .main {
   margin-left: 320px;

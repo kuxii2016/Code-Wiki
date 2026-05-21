@@ -9,7 +9,7 @@ $data = json_decode(file_get_contents($docFile), true);
 function e($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 
 $s = $data['stats'];
-$root = $s['sourceRoot'] ?? (dirname(__DIR__) . DIRECTORY_SEPARATOR . 'code');
+$root = '/home/pp2-server/actions-runner/_work/Project-Paradise-2-Server/Project-Paradise-2-Server';
 
 $projects = [];
 foreach ($data['classes'] as $key => $c) {
@@ -52,38 +52,6 @@ foreach ($data['classes'] as $key => $c) {
 usort($typeSizes, fn($a, $b) => $b['count'] - $a['count']);
 $topTypes = array_slice($typeSizes, 0, 10);
 
-$projectFramework = [];
-if (is_dir($root)) {
-    $iterCsproj = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root));
-    foreach ($iterCsproj as $file) {
-        if ($file->getExtension() !== 'csproj') continue;
-        $content = file_get_contents($file->getPathname());
-        $relDir = str_replace($root . DIRECTORY_SEPARATOR, '', $file->getPath());
-        $projKey = explode(DIRECTORY_SEPARATOR, $relDir)[0];
-
-        $tf = '';
-        if (preg_match('/<TargetFramework>([^<]+)<\/TargetFramework>/', $content, $m)) {
-            $tf = $m[1];
-        } elseif (preg_match('/<TargetFrameworkVersion>([^<]+)<\/TargetFrameworkVersion>/', $content, $m)) {
-            $tf = 'net' . ltrim($m[1], 'v');
-        }
-
-        $ot = '';
-        if (preg_match('/<OutputType>([^<]+)<\/OutputType>/', $content, $m)) {
-            $otLabel = $m[1];
-            $ot = $otLabel === 'Exe' ? 'Console' : ($otLabel === 'WinExe' ? 'WinApp' : ($otLabel === 'Library' ? 'Library' : $otLabel));
-        }
-
-        $isWeb = strpos($content, 'Microsoft.NET.Sdk.Web') !== false;
-        $isWpf = strpos($content, 'UseWPF') !== false || strpos($content, 'WindowsDesktop') !== false;
-        $isWinForms = strpos($content, 'UseWindowsForms') !== false;
-        $type = $isWeb ? '🌐 Web' : ($isWpf ? '🖥 WPF' : ($isWinForms ? '🪟 WinForms' : ($ot === 'Library' ? '📚 Library' : ($ot ? "⚙ $ot" : '📚 Library'))));
-
-        $projectFramework[$projKey] = ['framework' => $tf ?: '—', 'type' => $type];
-    }
-}
-
-// Comment coverage
 $commentedTypes = 0; $commentedMembers = 0; $totalTypesCheck = 0; $totalMembersCheck = 0;
 foreach ($data['classes'] as $c) {
     $totalTypesCheck++;
@@ -94,7 +62,6 @@ foreach ($data['classes'] as $c) {
     }
 }
 
-// Access level breakdown
 $accessLevels = ['public' => 0, 'private' => 0, 'internal' => 0, 'protected' => 0];
 foreach ($data['classes'] as $c) {
     $a = $c['access'] ?? 'public';
@@ -105,7 +72,6 @@ foreach ($data['classes'] as $c) {
     }
 }
 
-// Namespace statistics
 $nsStats = [];
 foreach ($data['classes'] as $key => $c) {
     $ns = $c['namespace'];
@@ -126,16 +92,16 @@ uksort($nsStats, 'strnatcasecmp');
 .live-search { position: relative; }
 .live-search-results {
   position: absolute; top: 100%; left: 0; right: 0;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 0 0 8px 8px;
   max-height: 320px; overflow-y: auto; display: none; z-index: 300;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
 .live-search-results.open { display: block; }
 .live-search-item {
-  display: block; padding: 0.5rem 0.75rem; border-bottom: 1px solid #f1f5f9;
-  text-decoration: none; color: #1f2937; font-size: 0.85rem;
+  display: block; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border);
+  text-decoration: none; color: var(--text); font-size: 0.85rem;
 }
-.live-search-item:hover { background: #f1f5f9; }
+.live-search-item:hover { background: var(--code-bg); }
 .live-search-item .kind-badge { font-size: 0.65rem; }
 .live-search-item .name { font-weight: 600; }
 .live-search-item .parent-name { color: #94a3b8; font-size: 0.78rem; }
@@ -145,22 +111,22 @@ uksort($nsStats, 'strnatcasecmp');
   gap: 1rem; margin: 1.5rem 0;
 }
 .stat-card {
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
   padding: 1.25rem; text-align: center;
 }
-.stat-card:hover { border-color: #93c5fd; }
+.stat-card:hover { border-color: var(--hover-border); }
 .stat-card .stat-value {
-  font-size: 2rem; font-weight: 800; color: #0f172a;
+  font-size: 2rem; font-weight: 800; color: var(--heading);
 }
 .stat-card .stat-label {
-  font-size: 0.78rem; color: #64748b; text-transform: uppercase;
+  font-size: 0.78rem; color: var(--secondary); text-transform: uppercase;
   letter-spacing: 0.05em; margin-top: 0.25rem;
 }
 .stat-card .stat-sub {
-  font-size: 0.78rem; color: #94a3b8; margin-top: 0.15rem;
+  font-size: 0.78rem; color: var(--doc-text); margin-top: 0.15rem;
 }
 .stat-bar {
-  height: 8px; border-radius: 4px; background: #e2e8f0; margin: 1rem 0; overflow: hidden;
+  height: 8px; border-radius: 4px; background: var(--bar-bg); margin: 1rem 0; overflow: hidden;
 }
 .stat-bar-fill { height: 100%; border-radius: 4px; }
 .top-types-list {
@@ -168,21 +134,22 @@ uksort($nsStats, 'strnatcasecmp');
 }
 .top-types-list li {
   display: flex; align-items: center; gap: 0.75rem;
-  padding: 0.6rem 0.75rem; border-bottom: 1px solid #f1f5f9;
+  padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border);
 }
 .top-types-list li:last-child { border-bottom: none; }
 .top-types-list .rank {
-  font-size: 0.8rem; font-weight: 700; color: #94a3b8; width: 24px;
+  font-size: 0.8rem; font-weight: 700; color: var(--secondary); width: 24px;
 }
 .top-types-list .type-name {
   flex: 1; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.85rem;
 }
 .top-types-list .member-count {
-  font-size: 0.85rem; font-weight: 600; color: #0f172a;
+  font-size: 0.85rem; font-weight: 600; color: var(--text);
 }
 </style>
 </head>
 <body>
+<script>if(localStorage.getItem('darkMode')==='true')document.body.classList.add('dark-mode');</script>
 <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
 <div class="sidebar">
   <div class="sidebar-header">
@@ -197,6 +164,7 @@ uksort($nsStats, 'strnatcasecmp');
   <nav>
     <div style="padding:0.25rem 1.5rem">
       <a href="api.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">⚡ API</a>
+      <a href="projects.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">📁 Projects</a>
       <a href="stats.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;font-weight:700;color:#38bdf8;">📊 Statistics</a>
       <a href="check.php" style="display:block;padding:0.2rem 0;font-size:0.85rem;">🔍 Check</a>
     </div>
@@ -204,23 +172,7 @@ uksort($nsStats, 'strnatcasecmp');
         <button onclick="toggleDark()" id="dark-toggle" style="width:100%;padding:0.4rem 0.75rem;border:1px solid #334155;border-radius:6px;background:#1e293b;color:#e2e8f0;cursor:pointer;font-size:0.8rem;">🌙 Dark Mode</button>
       </div>
   </nav>
-  <div class="sidebar-section">Projects</div>
-  <nav>
-    <?php foreach ($projects as $proj => $info): ?>
-    <div class="project-group">
-      <div class="project-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-        <span class="arrow">▶</span>
-        <?= e($proj) ?>
-        <span class="proj-count"><?= count($info['namespaces']) ?></span>
-      </div>
-      <div class="project-namespaces">
-        <?php foreach ($info['namespaces'] as $nsName): ?>
-        <a href="index.php#ns-<?= urlencode($nsName) ?>"><?= e($nsName) ?></a>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <?php endforeach; ?>
-  </nav>
+  <?php include 'sidebar.php'; ?>
 </div>
 
 <div class="main">
@@ -300,7 +252,7 @@ uksort($nsStats, 'strnatcasecmp');
 
   <h2>Members</h2>
   <?php
-  $memColors = ['method' => '#be185d', 'property' => '#4338ca', 'field' => '#1d4ed8', 'constructor' => '#374151', 'destructor' => '#94a3b8'];
+  $memColors = ['method' => '#be185d', 'property' => '#4338ca', 'field' => '#1d4ed8', 'constructor' => '#826E6B', 'destructor' => '#94a3b8'];
   $maxMem = max($s['memberCounts']) ?: 1;
   ?>
   <?php foreach ($s['memberCounts'] as $kind => $count): ?>
@@ -343,27 +295,6 @@ uksort($nsStats, 'strnatcasecmp');
       <?php endforeach; ?>
     </ol>
   </div>
-
-  <h2>Per Project</h2>
-  <table>
-    <tr><th>Project</th><th>Files</th><th>Types</th><th>Methods</th><th>Fields</th><th>Properties</th><th>Constructors</th><th>Framework</th><th>Type</th><th>Size</th></tr>
-    <?php foreach ($projectStats as $proj => $ps): ?>
-    <?php $bytes = $s['projectBytes'][$proj] ?? 0; ?>
-    <?php $fw = $projectFramework[$proj] ?? null; ?>
-    <tr>
-      <td><strong><?= e($proj) ?></strong></td>
-      <td><?= $ps['files'] ?></td>
-      <td><?= $ps['types'] ?></td>
-      <td><?= $ps['methods'] ?? 0 ?></td>
-      <td><?= $ps['fields'] ?? 0 ?></td>
-      <td><?= $ps['properties'] ?? 0 ?></td>
-      <td><?= $ps['constructors'] ?? 0 ?></td>
-      <td style="font-size:0.8rem;font-family:monospace;"><?= $fw ? e($fw['framework']) : '—' ?></td>
-      <td style="font-size:0.8rem;"><?= $fw ? $fw['type'] : '—' ?></td>
-      <td style="font-size:0.8rem;color:#64748b;"><?= number_format($bytes) ?> B<?= $bytes > 10240 ? '<br><span style="font-size:0.7rem;">' . round($bytes/1024/1024, 2) . ' MB</span>' : '' ?></td>
-    </tr>
-    <?php endforeach; ?>
-  </table>
 
   <h2>Per Namespace</h2>
   <table>
