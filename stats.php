@@ -9,7 +9,7 @@ $data = json_decode(file_get_contents($docFile), true);
 function e($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 
 $s = $data['stats'];
-$root = '/home/pp2-server/actions-runner/_work/Project-Paradise-2-Server/Project-Paradise-2-Server';
+$root = '/code';
 
 $projects = [];
 foreach ($data['classes'] as $key => $c) {
